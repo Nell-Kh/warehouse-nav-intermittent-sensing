@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments (anchored to the repo root so src/whnav/env/ is not ignored)
+/.venv/
+/venv/
+/env/
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Experiment outputs (never commit these; results go in the report)
+/runs/
+/results/
+/checkpoints/
+/wandb/
+*.pt
+*.pth
+*.db
+*.sqlite3
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+.antigravity/
