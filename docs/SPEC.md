@@ -33,6 +33,8 @@ RL course project (Prof. Teddy Lazebnik, University of Haifa). Group of 3.
 - **Decision points** (intersections, corners, dead ends):
   - with probability **p**, follow the rule **straight → right → left → back**, taking the first legal move;
   - otherwise, pick uniformly among legal moves, excluding back unless it's a dead end.
+  - Precisely: a cell is a decision point unless straight ahead is the only legal move other than back (an aisle). In an aisle the worker moves forward and uses no randomness. In areas wider than one cell, every cell with a side opening is a decision point.
+- **Randomness:** workers draw only from their own generator, seeded by the scenario's worker-trajectory seed (§2.8). Workers are processed in list order; at a decision point a worker draws once to choose rule vs. random, and once more for the random choice. Nothing else draws from this generator, so trajectories are identical for every controller.
 - **p** is called *rule adherence*. It isn't a direct measure of predictability.
 - Workers don't react to the robot.
 - Workers can share a cell (no worker–worker collisions). A cell counts as occupied if at least one worker is in it.
@@ -284,3 +286,4 @@ All methods get exactly the inputs in §2.6.
 | 2026-11-12 | §7 marked as a proposal; tasks claimed through GitHub issues | Team hasn't fixed roles yet |
 | 2026-11-12 | Goal at step `T` = success (§2.4); outage feasibility bounds and realized-`f` logging (§2.7); collision rules scoped to speed 1 | Edge cases found in review |
 | 2026-11-12 | §2.9 formal POMDP definition (state includes `p`) with discount `γ`; data-efficiency learning curves (§5, §6.1); `γ` and curve settings added to §10 | Course lecture 1 (problem formulation) and lecture 11 (data efficiency); `γ` was missing |
+| 2026-11-19 | §2.3 decision point defined precisely; worker random-draw order fixed | Needed to implement workers reproducibly |
