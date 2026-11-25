@@ -1,0 +1,7 @@
+# Changes here need Nell's review (CONTRIBUTING.md, SPEC §7).
+/src/whnav/env/                 @Nell-Kh
+/docs/SPEC.md                   @Nell-Kh
+# Shared interfaces (SPEC §7)
+/src/whnav/eval/controller.py   @Nell-Kh
+/src/whnav/eval/results.py      @Nell-Kh
+/src/whnav/agents/aux_target.py @Nell-Kh

@@ -2,12 +2,13 @@
 
 ## Workflow
 
-1. Claim the task first: assign yourself its GitHub issue (see [PLAN.md](docs/PLAN.md)).
+1. Claim the task first: assign yourself its GitHub issue.
 2. Never push to `main` directly.
 3. Create a branch per task: `<name>/<short-topic>`, for example `nell/scenario-generator`.
 4. Open a pull request into `main` when the task works and its tests pass.
-5. Every PR needs one approving review before merge. Nell reviews and merges.
-6. Keep PRs small: one task from [PLAN.md](docs/PLAN.md) per PR.
+5. Every PR needs one approving review, within 24 hours, before merge. Any teammate may approve work in their own lane; changes to the environment (`src/whnav/env/`), the shared interfaces and `docs/SPEC.md` need Nell's approval (see `.github/CODEOWNERS`).
+   Put `Closes #<issue>` in the PR description.
+6. Keep PRs small: one issue per PR.
 7. Tick the task in PLAN.md in the same PR.
 
 ## Commits
@@ -32,4 +33,4 @@
 
 ## Changing the spec
 
-The spec is frozen (see [SPEC.md](docs/SPEC.md)). Week-1 decisions and §10 parameters are filled in by PR, with the date and the reason. Any other change needs all three to agree and goes into the SPEC change log.
+The spec is frozen (see [SPEC.md](docs/SPEC.md)). §10 parameters are filled in by PR, with the date and the reason. Any other change needs all three to agree and goes into the SPEC change log.

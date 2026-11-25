@@ -2,7 +2,7 @@
 
 RL course project (Prof. Teddy Lazebnik, University of Haifa). Group of 3.
 
-**Status:** research scope and methods frozen on 2026-11-05. The only open items are the week-1 decisions (§2) and the parameters in §10. The pilot sets the parameters, and they're recorded there with the date and the reason. Don't add methods. Every change to this file is logged in §12.
+**Status:** research scope and methods frozen on 2026-11-05. The only open items are the parameters in §10. The pilot sets the parameters, and they're recorded there with the date and the reason. Don't add methods. Every change to this file is logged in §12.
 
 ---
 
@@ -25,11 +25,11 @@ RL course project (Prof. Teddy Lazebnik, University of Haifa). Group of 3.
 ### 2.2 Robot
 - Actions: `N`, `S`, `E`, `W`, `wait`. The robot moves 1 cell per step.
 - The robot and the workers move simultaneously: every new position is computed from the positions at the start of the step, then the collision checks in §2.4 run.
-- *Week-1 decision:* what happens when the robot moves into a shelf or wall (proposed: it stays in place).
+- Moving into a shelf, a wall or off the map leaves the robot in place (decided 2026-11-25).
 
 ### 2.3 Workers
 - **Speed:** constant between decision points (§10). In aisles, workers always move forward.
-- *Week-1 decision:* worker speed in cells per step. Proposed: 1 cell/step. With speed > 1 a worker can cross the robot's path inside one step, which the two rules in §2.4 don't catch; choosing speed > 1 therefore also requires defining a sub-step collision check before implementation.
+- Worker speed is 1 cell per step (decided 2026-11-25). With speed > 1 a worker can cross the robot's path inside one step, which the two rules in §2.4 don't catch; choosing speed > 1 therefore also requires defining a sub-step collision check before implementation.
 - **Decision points** (intersections, corners, dead ends):
   - with probability **p**, follow the rule **straight → right → left → back**, taking the first legal move;
   - otherwise, pick uniformly among legal moves, excluding back unless it's a dead end.
@@ -67,7 +67,7 @@ RL course project (Prof. Teddy Lazebnik, University of Haifa). Group of 3.
 - Steps since the last valid reading.
 - Remaining time: `steps_left / T`.
 - Workers are anonymous: no IDs, headings or velocities in the observations.
-- *Week-1 decision:* tensor layout (full-map channels vs. a crop centered on the robot), agreed by all three. Implemented as full-map channels, to confirm at the team meeting on Nov 29:
+- Tensor layout: full-map channels (decided 2026-11-25):
   - `grid`, shape `(6, H, W)`: blocked, robot, goal, seen empty, seen worker, not observed. Every free cell has exactly one of the last three set; blocked cells have none.
   - `scalars`, shape `(3,)`: valid flag, steps since the last valid reading divided by `T`, `steps_left / T`.
   - Why full-map: the grid size is fixed and the map is known, so the goal is visible directly and no separate goal-direction input is needed.
@@ -77,11 +77,11 @@ RL course project (Prof. Teddy Lazebnik, University of Haifa). Group of 3.
 ### 2.7 Sensor outages
 - **Scattered:** isolated single-step drops.
 - **Consecutive:** outages of duration **d**.
-- Both patterns have the **same overall missing fraction f** (§10).
-- *Week-1 decision:* how the schedule is generated. Proposed: the schedule covers the full horizon `T` and drops exactly `round(f·T)` steps. Scattered: drop positions chosen uniformly with no two adjacent. Consecutive: `round(f·T / d)` non-overlapping blocks of `d` steps, at least one visible step between blocks, placed uniformly. Independent per-step drops are not used: they create adjacent drops and a different realized `f` per episode.
-  - Feasibility: scattered needs `round(f·T) ≤ ⌊(T+1)/2⌋`; consecutive needs `round(f·T/d)·(d+1) ≤ T+1`. The pilot (§9) picks `f` and `d` within these bounds, and the generator raises an error on infeasible inputs.
-  - The two patterns drop `round(f·T)` vs. `d·round(f·T/d)` steps, which can differ by up to about `d/2` steps. Each scenario stores its realized missing fraction, and the report states the largest gap between patterns.
-  - Details: `round` means round half up. Entry `i` of the schedule (0-based) applies to the observation the robot uses for its `(i+1)`-th action, so the first observation can be missing too. Every valid placement of the blocks is equally likely. A positive `f` that rounds to zero blocks is an error, because it would silently give a no-outage episode.
+- Both patterns have the **same expected missing fraction f** (§10).
+- Schedule generation (decided 2026-11-25): the schedule covers the full horizon `T`. Scattered is the case `d = 1`. The number of blocks is `x = f·T / d` rounded at random: up with probability equal to its fractional part, down otherwise. The blocks (exactly `d` steps each, at least one visible step between any two) are placed uniformly over all valid placements. Independent per-step drops are not used: they create adjacent drops.
+  - Why random rounding: with ordinary rounding, the realized missing fraction of the consecutive pattern drifts with `d` (e.g. 0.40 instead of 0.30 at `T = 20`, `d = 4`), so the `d` axis of the heatmap would be confounded with `f`. Random rounding makes the expected missing fraction exactly `f` for every `d`; each single schedule is off by fewer than `d` steps.
+  - Feasibility: when `f > 0`, at least one block is required (`f·T / d ≥ 1`), so an outage condition never silently becomes a no-outage episode; and `⌈f·T/d⌉·(d+1) ≤ T+1`. The generator raises an error otherwise. So the largest `d` must satisfy `d ≤ f·T_min`, where `T_min = 2 ×` the minimum start–goal distance; the pilot (§9) picks `f`, the `d` grid and the minimum distance together.
+  - Entry `i` of the schedule (0-based) applies to the observation the robot uses for its `(i+1)`-th action, so the first observation can be missing too. Each scenario stores its realized missing fraction.
 - During an outage the whole 7×7 window is "not observed".
 
 ### 2.8 Scenarios and data splits
@@ -95,6 +95,8 @@ RL course project (Prof. Teddy Lazebnik, University of Haifa). Group of 3.
   - validation (Optuna and checkpoint selection);
   - test (final results only).
 - Splits use **held-out layouts and held-out worker-trajectory seeds**.
+- Worker start positions exclude the robot's start and every cell within Manhattan distance 2 of it, so no episode begins with an unavoidable collision (decided 2026-11-25).
+- The training mix includes 10% no-outage episodes, so the no-outage control (§6.1) is not out of distribution (decided 2026-11-25).
 
 ### 2.9 Formal definition (POMDP)
 The robot never sees the full state, so the problem is a POMDP `(S, A, P, R, Ω, O, γ)`, not an MDP.
@@ -164,7 +166,9 @@ All methods get exactly the inputs in §2.6.
 - **Optuna:**
   - Tune and select checkpoints on validation only.
   - Use the same number of trials and the same environment steps per trial for every method.
-  - Set a hard tuning budget after the week-2 timing measurement.
+  - Set a hard tuning budget after the training-time measurement (RL-3).
+- The policy network gets only the observation in §2.6, not the previous action (decided 2026-11-25).
+- At evaluation, learned methods sample their action from the policy, with a generator seeded per scenario so every run is reproducible (decided 2026-11-25). Sampling, not argmax: without full memory, a deterministic policy can get stuck in loops.
 - Log wall-clock time for every run.
 - Log validation success rate at fixed environment-step intervals during training, for every run (learning curves, §6.1).
 - **Stack:** Python, Gymnasium, PyTorch, Optuna, Git.
@@ -206,38 +210,40 @@ All methods get exactly the inputs in §2.6.
 
 ## 7. Team
 
-**Not final (2026-11-12):** roles aren't fixed yet. The table below is a proposed split only. Work is claimed task by task through GitHub issues (see PLAN.md).
+Three lanes (decided 2026-11-25). Each person owns one end-to-end piece and its interface; tasks are GitHub issues with the lane prefix.
 
-| Person | Proposed focus |
-|---|---|
-| 1 | Environment, last-seen and privileged A\*, freeze heuristic, motion-predicting planner |
-| 2 | PPO 4-frame, recurrent PPO, Optuna tuning |
-| 3 | From day 1: scenario generator, evaluation scripts, environment tests. Then: method 3 (auxiliary loss), plots |
-| All | Observation format and evaluation protocol (week 1); report and presentation. Each person writes their report section as they finish |
+| Lane | Owner | Owns |
+|---|---|---|
+| Simulator and references (`ENV-*`) | Nell | Environment and Gymnasium API, layouts, scenarios and splits, last-seen and privileged A\*, freeze heuristic, calibration pilot (§9, §10), the planner's `p̂`, prediction quality (§6.2), rendering and demo video |
+| Learned methods (`RL-*`) | Teammate B | PPO core, methods 1–3, auxiliary target, learning curves and data efficiency (§6.1), Optuna tuning, the 15 main runs |
+| Planner and evaluation (`EVAL-*`) | Teammate C | Controller interface, episode runner, results format, method 4, navigation metrics, statistics (§6.3), main figures, final evaluation |
+| All (`TEAM-*`) | Everyone | Related work, report, presentation, reproducibility check. Each person writes their report sections as their part works |
 
 ---
 
 ## 8. Timeline
 
-| Week | Dates | Deliverable |
-|---|---|---|
-| 1 | Nov 8–14 | **Milestone:** a scenario replays identically across controllers; collision, visibility, outage and deadline tests pass; last-seen and privileged A\* run. Observation format agreed |
-| 2 | Nov 15–21 | Related-work list (5–8 papers, for the report's Discussion), motion-predicting planner, freeze heuristic, calibration pilot on development scenarios (§9), PPO solves a small no-outage task, training-time measurement → tuning budget. **Gate:** if anything slips, shrink the warehouse and the number of workers first |
-| 3 | Nov 22–28 | Recurrent PPO with outages, first results, environment section of the report |
-| 4 | Nov 29–Dec 5 | Method 3 (auxiliary loss) |
-| 5 | Dec 6–12 | Tuning + 15 main runs (methods 1–3 × 5 seeds) |
-| 6 | Dec 13–19 | Full test evaluation: heatmap, prediction quality, plots |
-| 7 | Dec 20–26 | Report, presentation (length to confirm with the lecturer: the guideline says 15 min), demo video (robot during an outage, with vs. without memory) |
-| — | Dec 27–31 | Buffer |
+Replaced on 2026-11-25 (the original weeks 1–3 slipped). Dates are due dates for merged PRs; the GitHub issues hold the detail.
+
+| Dates | Simulator and references (Nell) | Learned methods (B) | Planner and evaluation (C) | Everyone |
+|---|---|---|---|---|
+| Nov 26 – Dec 5 | ENV-1 environment (Dec 1); ENV-2 layouts (Dec 3); ENV-3 scenarios and splits, ENV-4 replay tests (Dec 4) | RL-1 PPO core (Dec 2); RL-6 auxiliary target (Dec 3) | EVAL-1/2 runner and results format (Dec 2); EVAL-3 metrics (Dec 5) | — |
+| Dec 6 – 12 | ENV-5/6 references (Dec 6); ENV-9 `p̂` (Dec 7); ENV-7 pilot, lock §10 (Dec 9); environment figures (Dec 12) | RL-2 method 1 (Dec 6); RL-3 timing and budget (Dec 7); RL-4 method 2 (Dec 9); RL-5 controller and curves (Dec 10); RL-7 method 3 (Dec 12) | EVAL-6 tracker (Dec 9); EVAL-7 planner (Dec 12) | Related work (Dec 10) |
+| Dec 13 – 19 | ENV-10 prediction quality (Dec 17); report draft (Dec 18) | RL-8 tuning (Dec 15); RL-9 15 runs (Dec 19) | EVAL-4/5 statistics and figures, EVAL-8 dry run (Dec 15) | Machines shared for training |
+| Dec 20 – 26 | Report sections (Dec 22); demo video (Dec 23) | RL-10 data efficiency (Dec 20); RL-11 report (Dec 23) | EVAL-8 final evaluation (Dec 21); EVAL-9 report (Dec 23) | Report and presentation (Dec 26) |
+| Dec 27 – 31 | Buffer | Buffer | Buffer | Fresh-clone reproducibility check (Dec 27) |
+
+**Checkpoints:** Dec 2 (PPO core and episode runner merged) and Dec 9 (the planner's tracker passes its tests). If one is missed, the lane's work is redistributed that week.
+**Gate:** if anything slips, shrink the warehouse and the number of workers first. If time runs short later, cut in this order: fewer Optuna trials, then the secondary prediction metrics, then fewer `d × p` cells. Keep the four methods and the five seeds.
 
 **Deliverables:**
 - Report: 8–20 pages excluding references, 1.5 line spacing, Arial 12, 1-inch margins.
 - Clean, reproducible code in Git.
-- Presentation: 10% of the final grade (project: 90%). Length: the guideline says 15 minutes; confirm with the lecturer.
+- Presentation: 15 minutes, as the guideline states; 10% of the final grade (project: 90%).
 
 ---
 
-## 9. Calibration pilot (week 2)
+## 9. Calibration pilot (ENV-7)
 
 - Run on **development scenarios only**, using the A\* references and the freeze heuristic. No training is needed.
 - **Target 1:** a worker density where privileged A\* succeeds on about 90%+ of scenarios with no outages. This is a pilot target, not a guarantee.
@@ -267,6 +273,8 @@ All methods get exactly the inputs in §2.6.
 | Optuna trials / steps per trial | | | |
 | Scenarios per heatmap cell (test) | | | |
 
+**Provisional values** for development until the pilot locks the table above (ENV-7, Dec 9): 15 × 15 grid including the outer wall; 6 workers; minimum start–goal distance 14 (so `T ≥ 28`); `f = 0.3`; `d ∈ {2, 4, 6, 8}`; `p ∈ {0.5, 0.7, 0.9, 1.0}`; `γ = 0.99`; 100 test scenarios per heatmap cell. The minimum distance is 14 rather than 10 because `d = 8` needs `f·T ≥ 8` (§2.7).
+
 ---
 
 ## 11. Out of scope
@@ -295,3 +303,6 @@ All methods get exactly the inputs in §2.6.
 | 2026-11-19 | §2.3 decision point defined precisely; worker random-draw order fixed | Needed to implement workers reproducibly |
 | 2026-11-25 | §2.7 rounding rule, schedule indexing, uniform placement and the zero-block error stated | Needed to implement outage schedules without ambiguity |
 | 2026-11-25 | §2.6 observation layout written down (full-map channels, pending team confirmation); no occlusion; counter start convention | Needed to implement observations |
+| 2026-11-25 | Week-1 decisions recorded (§2.2, §2.3, §2.6); worker start exclusion and 10% no-outage training episodes (§2.8); no previous-action input and sampled evaluation actions (§5) | Open decisions left to the environment owner at the Nov 25 team meeting |
+| 2026-11-25 | §2.7 block count rounded at random instead of half up; feasibility needs at least one block | Ordinary rounding made the realized missing fraction depend on `d`, confounding the heatmap |
+| 2026-11-25 | §7 three lanes; §8 timeline replaced; presentation set to 15 minutes; provisional parameters under §10 | Work plan agreed at the Nov 25 team meeting |
