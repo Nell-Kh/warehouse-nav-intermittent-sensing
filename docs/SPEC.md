@@ -67,7 +67,12 @@ RL course project (Prof. Teddy Lazebnik, University of Haifa). Group of 3.
 - Steps since the last valid reading.
 - Remaining time: `steps_left / T`.
 - Workers are anonymous: no IDs, headings or velocities in the observations.
-- *Week-1 decision:* tensor layout (full-map channels vs. a crop centered on the robot), agreed by all three.
+- *Week-1 decision:* tensor layout (full-map channels vs. a crop centered on the robot), agreed by all three. Implemented as full-map channels, to confirm at the team meeting on Nov 29:
+  - `grid`, shape `(6, H, W)`: blocked, robot, goal, seen empty, seen worker, not observed. Every free cell has exactly one of the last three set; blocked cells have none.
+  - `scalars`, shape `(3,)`: valid flag, steps since the last valid reading divided by `T`, `steps_left / T`.
+  - Why full-map: the grid size is fixed and the map is known, so the goal is visible directly and no separate goal-direction input is needed.
+- The window is not blocked by shelves, and it is clipped at the map edge.
+- If no reading has been valid yet, "steps since the last valid reading" counts from the start of the episode (1 at the first observation).
 
 ### 2.7 Sensor outages
 - **Scattered:** isolated single-step drops.
@@ -76,6 +81,7 @@ RL course project (Prof. Teddy Lazebnik, University of Haifa). Group of 3.
 - *Week-1 decision:* how the schedule is generated. Proposed: the schedule covers the full horizon `T` and drops exactly `round(f·T)` steps. Scattered: drop positions chosen uniformly with no two adjacent. Consecutive: `round(f·T / d)` non-overlapping blocks of `d` steps, at least one visible step between blocks, placed uniformly. Independent per-step drops are not used: they create adjacent drops and a different realized `f` per episode.
   - Feasibility: scattered needs `round(f·T) ≤ ⌊(T+1)/2⌋`; consecutive needs `round(f·T/d)·(d+1) ≤ T+1`. The pilot (§9) picks `f` and `d` within these bounds, and the generator raises an error on infeasible inputs.
   - The two patterns drop `round(f·T)` vs. `d·round(f·T/d)` steps, which can differ by up to about `d/2` steps. Each scenario stores its realized missing fraction, and the report states the largest gap between patterns.
+  - Details: `round` means round half up. Entry `i` of the schedule (0-based) applies to the observation the robot uses for its `(i+1)`-th action, so the first observation can be missing too. Every valid placement of the blocks is equally likely. A positive `f` that rounds to zero blocks is an error, because it would silently give a no-outage episode.
 - During an outage the whole 7×7 window is "not observed".
 
 ### 2.8 Scenarios and data splits
@@ -287,3 +293,5 @@ All methods get exactly the inputs in §2.6.
 | 2026-11-12 | Goal at step `T` = success (§2.4); outage feasibility bounds and realized-`f` logging (§2.7); collision rules scoped to speed 1 | Edge cases found in review |
 | 2026-11-12 | §2.9 formal POMDP definition (state includes `p`) with discount `γ`; data-efficiency learning curves (§5, §6.1); `γ` and curve settings added to §10 | Course lecture 1 (problem formulation) and lecture 11 (data efficiency); `γ` was missing |
 | 2026-11-19 | §2.3 decision point defined precisely; worker random-draw order fixed | Needed to implement workers reproducibly |
+| 2026-11-25 | §2.7 rounding rule, schedule indexing, uniform placement and the zero-block error stated | Needed to implement outage schedules without ambiguity |
+| 2026-11-25 | §2.6 observation layout written down (full-map channels, pending team confirmation); no occlusion; counter start convention | Needed to implement observations |
