@@ -9,6 +9,12 @@ Two patterns share one generator:
 - consecutive: blocks of exactly ``d`` missing steps.
 Blocks never touch: at least one visible step separates any two of them.
 Every valid placement of the blocks is equally likely.
+
+The number of blocks is ``x = f * T / d`` rounded at random: up with
+probability equal to its fractional part, down otherwise. So the expected
+missing fraction is exactly ``f`` for every ``d``, and the comparison across
+``d`` at one ``f`` is not biased by rounding. Each schedule still differs from
+``f`` by less than ``d`` steps.
 """
 
 from __future__ import annotations
@@ -17,41 +23,66 @@ import math
 
 import numpy as np
 
+_EPS = 1e-9  # absorbs float error such as 0.1 * 30 = 3.0000000000000004
 
-def block_count(horizon: int, f: float, d: int = 1) -> int:
-    """Number of outage blocks: ``f * horizon / d`` rounded half up."""
+
+def expected_blocks(horizon: int, f: float, d: int = 1) -> float:
+    """Expected number of outage blocks, ``f * horizon / d``."""
     _check_inputs(horizon, f, d)
-    return math.floor(f * horizon / d + 0.5 + 1e-9)
+    return f * horizon / d
+
+
+def block_count_range(horizon: int, f: float, d: int = 1) -> tuple[int, int]:
+    """Smallest and largest number of blocks a schedule can have."""
+    x = expected_blocks(horizon, f, d)
+    low = math.floor(x + _EPS)
+    high = low if x - low < _EPS else low + 1
+    return low, high
 
 
 def is_feasible(horizon: int, f: float, d: int = 1) -> bool:
-    """True if the blocks fit in the horizon with a visible step between them.
+    """True if every possible schedule fits in the horizon.
 
-    The condition is ``n * (d + 1) <= horizon + 1`` for ``n`` blocks. A positive
-    ``f`` that rounds to zero blocks is also infeasible, because it would
-    silently produce a no-outage episode.
+    Needs at least one block whenever ``f > 0`` (``f * T / d >= 1``), so an
+    outage condition never silently becomes a no-outage episode, and room for
+    the largest block count with a visible step between blocks:
+    ``high * (d + 1) <= horizon + 1``.
     """
-    n = block_count(horizon, f, d)
-    if n == 0:
-        return f == 0.0
-    return n * (d + 1) <= horizon + 1
+    low, high = block_count_range(horizon, f, d)
+    if f == 0.0:
+        return True
+    return low >= 1 and high * (d + 1) <= horizon + 1
+
+
+def draw_block_count(horizon: int, f: float, d: int, rng: np.random.Generator) -> int:
+    """Number of blocks for one schedule: ``f * T / d`` rounded at random.
+
+    Uses one ``rng.random()`` call when the expected count is not a whole
+    number, and none otherwise.
+    """
+    low, high = block_count_range(horizon, f, d)
+    if low == high:
+        return low
+    frac = expected_blocks(horizon, f, d) - low
+    return high if rng.random() < frac else low
 
 
 def outage_schedule(horizon: int, f: float, d: int, rng: np.random.Generator) -> np.ndarray:
-    """Schedule with ``block_count(horizon, f, d)`` outages of exactly ``d`` steps.
+    """Schedule with ``draw_block_count`` outages of exactly ``d`` steps.
 
-    Placement is uniform over all valid schedules: choose ``n`` of the
-    ``horizon - n*d + 1`` slots that remain once every block is shrunk to a
-    point and the mandatory gaps are removed, then expand them again.
-    Uses a single ``rng.choice`` call, and none when there are no blocks.
+    Placement is uniform over all valid schedules with that many blocks:
+    choose ``n`` of the ``horizon - n*d + 1`` slots that remain once every
+    block is shrunk to a point and the mandatory gaps are removed, then expand
+    them again. Random draws, in order: the block-count draw (if any), then
+    one ``rng.choice`` call (none when there are no blocks).
     """
     if not is_feasible(horizon, f, d):
-        n = block_count(horizon, f, d)
+        low, high = block_count_range(horizon, f, d)
         raise ValueError(
-            f"infeasible outage schedule: horizon={horizon}, f={f}, d={d} gives {n} block(s); "
-            f"need at least one block when f > 0 and n*(d+1) <= horizon+1"
+            f"infeasible outage schedule: horizon={horizon}, f={f}, d={d} gives {low}-{high} "
+            f"block(s); need f*T/d >= 1 when f > 0, and blocks*(d+1) <= horizon+1"
         )
-    n = block_count(horizon, f, d)
+    n = draw_block_count(horizon, f, d, rng)
     schedule = np.zeros(horizon, dtype=bool)
     if n == 0:
         return schedule
@@ -63,7 +94,7 @@ def outage_schedule(horizon: int, f: float, d: int, rng: np.random.Generator) ->
 
 
 def scattered_schedule(horizon: int, f: float, rng: np.random.Generator) -> np.ndarray:
-    """Isolated single-step drops: ``round(f * horizon)`` of them, no two adjacent."""
+    """Isolated single-step drops, ``f * horizon`` of them on average, no two adjacent."""
     return outage_schedule(horizon, f, 1, rng)
 
 

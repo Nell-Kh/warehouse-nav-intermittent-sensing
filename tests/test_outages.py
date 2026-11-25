@@ -5,8 +5,10 @@ import numpy as np
 import pytest
 
 from whnav.env.outages import (
-    block_count,
+    block_count_range,
     consecutive_schedule,
+    draw_block_count,
+    expected_blocks,
     is_feasible,
     outage_runs,
     outage_schedule,
@@ -22,12 +24,29 @@ def rng(seed=0):
 # --- counts and rounding ---
 
 
-def test_block_count_rounds_half_up():
-    assert block_count(10, 0.25) == 3  # 2.5 -> 3, not banker's rounding to 2
-    assert block_count(10, 0.35) == 4  # 3.5 -> 4
-    assert block_count(30, 0.1) == 3  # 0.1 * 30 is 3.0000000000000004 in floats
-    assert block_count(40, 0.2, d=4) == 2
-    assert block_count(40, 0.0, d=4) == 0
+def test_block_count_range():
+    assert block_count_range(10, 0.25) == (2, 3)  # 2.5 blocks expected
+    assert block_count_range(30, 0.1) == (3, 3)  # 0.1 * 30 is 3.0000000000000004 in floats
+    assert block_count_range(40, 0.2, d=4) == (2, 2)
+    assert block_count_range(40, 0.0, d=4) == (0, 0)
+
+
+def test_whole_block_count_uses_no_randomness():
+    g = rng()
+    before = g.bit_generator.state
+    assert draw_block_count(40, 0.2, 4, g) == 2
+    assert g.bit_generator.state == before
+
+
+@pytest.mark.parametrize(("horizon", "f", "d"), [(30, 0.2, 4), (20, 0.3, 4), (28, 0.3, 8)])
+def test_random_rounding_makes_expected_missing_fraction_exactly_f(horizon, f, d):
+    g = rng(3)
+    n = 20000
+    draws = [draw_block_count(horizon, f, d, g) for _ in range(n)]
+    low, high = block_count_range(horizon, f, d)
+    assert set(draws) == {low, high}
+    assert np.mean(draws) == pytest.approx(expected_blocks(horizon, f, d), abs=0.02)
+    assert np.mean(draws) * d / horizon == pytest.approx(f, abs=0.01)
 
 
 # --- scattered ---
@@ -56,7 +75,7 @@ def test_consecutive_blocks_have_length_d_and_do_not_touch(seed, d):
     horizon, f = 80, 0.2
     s = consecutive_schedule(horizon, f, d, rng(seed))
     runs = outage_runs(s)
-    assert len(runs) == block_count(horizon, f, d)
+    assert len(runs) in block_count_range(horizon, f, d)
     assert all(length == d for _, length in runs)  # also proves blocks never merge
     assert s.sum() == d * len(runs)
 
@@ -67,10 +86,11 @@ def test_same_missing_fraction_when_d_divides_the_drop_count():
     assert realized_fraction(scattered) == realized_fraction(consecutive) == pytest.approx(0.2)
 
 
-def test_realized_fraction_can_differ_from_f():
-    # 0.2 * 30 / 4 = 1.5 -> 2 blocks -> 8 missing steps, not 6
-    s = consecutive_schedule(30, 0.2, 4, rng())
-    assert realized_fraction(s) == pytest.approx(8 / 30)
+def test_each_schedule_misses_by_less_than_d_steps():
+    # 0.2 * 30 / 4 = 1.5 blocks: each schedule has 4 or 8 missing steps, 6 on average
+    for seed in range(50):
+        s = consecutive_schedule(30, 0.2, 4, rng(seed))
+        assert s.sum() in (4, 8)
 
 
 # --- uniform placement ---
@@ -90,7 +110,8 @@ def all_valid_schedules(horizon, n, d):
 
 @pytest.mark.parametrize(("horizon", "f", "d"), [(6, 2 / 6, 1), (7, 4 / 7, 2), (9, 6 / 9, 3)])
 def test_every_valid_schedule_is_equally_likely(horizon, f, d):
-    n = block_count(horizon, f, d)
+    n, high = block_count_range(horizon, f, d)
+    assert n == high  # whole block count, so every schedule has n blocks
     valid = all_valid_schedules(horizon, n, d)
     g = rng(5)
     draws = 400 * len(valid)
@@ -124,12 +145,14 @@ def test_feasibility_matches_spec_bounds():
     for horizon in range(1, 41):
         for d in (1, 2, 3, 5):
             for f in (0.0, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9):
-                n = block_count(horizon, f, d)
-                expected = (n == 0 and f == 0.0) or (n > 0 and n * (d + 1) <= horizon + 1)
+                low, high = block_count_range(horizon, f, d)
+                expected = f == 0.0 or (low >= 1 and high * (d + 1) <= horizon + 1)
                 assert is_feasible(horizon, f, d) == expected
                 if expected:
                     s = outage_schedule(horizon, f, d, rng(horizon))
-                    assert [length for _, length in outage_runs(s)] == [d] * n
+                    runs = outage_runs(s)
+                    assert low <= len(runs) <= high
+                    assert all(length == d for _, length in runs)
                 else:
                     with pytest.raises(ValueError):
                         outage_schedule(horizon, f, d, rng(horizon))
@@ -142,8 +165,8 @@ def test_scattered_above_half_is_infeasible():
         scattered_schedule(10, 0.6, rng())
 
 
-def test_positive_f_that_rounds_to_zero_blocks_is_rejected():
-    # 0.1 * 20 / 8 = 0.25 -> 0 blocks: would silently be a no-outage episode
+def test_fewer_than_one_expected_block_is_rejected():
+    # 0.1 * 20 / 8 = 0.25 blocks: most episodes would silently have no outage
     assert not is_feasible(20, 0.1, 8)
     with pytest.raises(ValueError):
         consecutive_schedule(20, 0.1, 8, rng())
