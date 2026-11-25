@@ -20,9 +20,9 @@ There are no fixed roles. Each task has exactly one owner from the moment someon
 
 - [x] Repo, spec, plan, contribution rules (Nell)
 - [ ] Week-1 decisions above (all)
-- [ ] Grid, robot, workers, collisions, deadline, reward
-- [ ] Observation encoding per SPEC §2.6
-- [ ] Sensor outages, scattered and consecutive, same `f`
+- [x] Grid, robot, workers, collisions, deadline, reward (Nell)
+- [x] Observation encoding per SPEC §2.6 (Nell)
+- [x] Sensor outages, scattered and consecutive, same `f` (Nell)
 - [ ] Scenario generator with seeds; four splits with held-out layouts and seeds
 - [ ] Tests: collision (same cell, swap), visibility, outage, deadline, terminal handling
 - [ ] Test: a scenario replays identically from its seed
