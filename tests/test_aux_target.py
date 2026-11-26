@@ -8,6 +8,7 @@ import pytest
 
 from whnav.agents.aux_target import AUX_SIZE, AuxTargetWrapper, aux_target
 from whnav.env.grid import Action, GridMap
+from whnav.env.observation import Channel, encode_observation
 from whnav.env.scenario import make_scenario
 from whnav.env.warehouse_env import WarehouseEnv
 from whnav.env.workers import Heading, WorkerState
@@ -31,17 +32,18 @@ def test_no_outage_masks_only_the_outer_ring() -> None:
     np.testing.assert_array_equal(labels, expected_labels)
 
 
-def test_outage_masks_every_free_cell_including_robot() -> None:
+def test_outage_masks_every_free_cell_except_robot() -> None:
     blocked = np.zeros((11, 11), dtype=bool)
     blocked[1, 1] = blocked[5, 6] = True
     workers = [(5, 5), (5, 6), (1, 1), (4, 6), (5, 10)]
 
     labels, mask = aux_target(GridMap(blocked), (5, 5), workers, outage=True)
 
+    expected_mask = ~blocked[1:10, 1:10]
+    expected_mask[4, 4] = False
     expected_labels = np.zeros((9, 9), dtype=np.float32)
-    expected_labels[4, 4] = expected_labels[3, 5] = 1.0
-    assert mask[4, 4]
-    np.testing.assert_array_equal(mask, ~blocked[1:10, 1:10])
+    expected_labels[3, 5] = 1.0
+    np.testing.assert_array_equal(mask, expected_mask)
     np.testing.assert_array_equal(labels, expected_labels)
 
 
@@ -57,6 +59,7 @@ def test_map_edge_clips_targets_and_excludes_shelves(outage: bool) -> None:
     if outage:
         expected_mask[4:, 4:] = True
         expected_mask[5, 4] = False
+    expected_mask[4, 4] = False
     expected_mask[8, 8] = False
     expected_labels = np.zeros((9, 9), dtype=np.float32)
     expected_labels[4, 8] = expected_labels[8, 4] = 1.0
@@ -64,6 +67,33 @@ def test_map_edge_clips_targets_and_excludes_shelves(outage: bool) -> None:
     assert not labels[~mask].any()
     np.testing.assert_array_equal(mask, expected_mask)
     np.testing.assert_array_equal(labels, expected_labels)
+
+
+@pytest.mark.parametrize("seed", [0, 7, 42, 101])
+@pytest.mark.parametrize("outage", [False, True])
+def test_mask_matches_the_unobserved_channel(seed: int, outage: bool) -> None:
+    rng = np.random.default_rng(seed)
+    height, width = 11, 13
+    blocked = rng.random((height, width)) < 0.25
+    robot = (int(rng.integers(height)), int(rng.integers(width)))
+    goal = (robot[0], (robot[1] + 1) % width)
+    blocked[robot] = blocked[goal] = False
+    free_cells = np.argwhere(~blocked)
+    worker_cells = free_cells[rng.choice(len(free_cells), size=6, replace=False)]
+    workers = [(int(row), int(col)) for row, col in worker_cells]
+    grid = GridMap(blocked)
+    schedule = np.array([not outage, outage], dtype=bool)
+
+    observation = encode_observation(grid, robot, goal, workers, schedule, index=1)
+    _, mask = aux_target(grid, robot, workers, outage)
+
+    radius = AUX_SIZE // 2
+    unobserved = observation["grid"][Channel.NOT_OBSERVED].astype(bool)
+    padded = np.pad(unobserved, radius)
+    row, col = robot
+    expected = padded[row : row + AUX_SIZE, col : col + AUX_SIZE]
+    expected[radius, radius] = False
+    np.testing.assert_array_equal(mask, expected)
 
 
 def test_no_outage_can_have_an_empty_mask() -> None:
@@ -119,7 +149,6 @@ def test_wrapper_preserves_step_and_reset_targets_with_same_step_autoreset() -> 
         observation, reset_info = envs.reset(seed=0)
         assert observation.keys() == {"grid", "scalars"}
         assert not reset_info["aux_labels"].any()
-        assert not reset_info["aux_mask"][:, 4, 4].any()
 
         observation, _, terminated, truncated, info = envs.step(np.array([Action.E, Action.WAIT]))
         assert observation.keys() == {"grid", "scalars"}
@@ -133,13 +162,13 @@ def test_wrapper_preserves_step_and_reset_targets_with_same_step_autoreset() -> 
             assert batch["aux_labels"].shape == batch["aux_mask"].shape == (2, 9, 9)
             assert batch["aux_labels"].dtype == np.float32
             assert batch["aux_mask"].dtype == np.bool_
+            assert not batch["aux_mask"][:, 4, 4].any()
+            assert not batch["aux_labels"][:, 4, 4].any()
 
         # The terminal environment's reset and final info belong to different observations.
         np.testing.assert_array_equal(info["aux_labels"][0], reset_info["aux_labels"][0])
         np.testing.assert_array_equal(info["aux_mask"][0], reset_info["aux_mask"][0])
         assert final_info["outcome"][0] == "success"
         assert final_info["aux_labels"][0, 4, 5] == 1.0
-        assert final_info["aux_mask"][0, 4, 4]
         assert info["aux_labels"][1, 4, 6] == 1.0
         assert info["aux_labels"][1, 4, 7] == 0.0
-        assert info["aux_mask"][1, 4, 4]

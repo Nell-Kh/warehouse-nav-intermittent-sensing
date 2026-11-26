@@ -21,10 +21,11 @@ def aux_target(
 ) -> tuple[NDArray[np.float32], NDArray[np.bool_]]:
     """Return occupancy labels and a validity mask for the robot-centered 9×9 area.
 
-    Coordinates follow the map's (row, column) convention, with the robot at
-    index (4, 4). The boolean mask covers traversable, in-map cells outside the
-    current 7×7 sensor window. During an outage it covers every traversable,
-    in-map cell in the area. Earlier readings do not affect the mask.
+    Coordinates follow the map's (row, column) convention. The robot's own
+    cell at index (4, 4) is always excluded from the mask. The boolean mask
+    covers traversable, in-map cells outside the current 7×7 sensor window.
+    During an outage it covers every other traversable, in-map cell in the
+    area. Earlier readings do not affect the mask.
 
     The float32 labels are 1.0 at masked cells with one or more workers and 0.0
     elsewhere. Worker positions are privileged ground truth for supervision and
@@ -38,7 +39,8 @@ def aux_target(
         dr = row - radius
         for col in range(AUX_SIZE):
             dc = col - radius
-            if not outage and max(abs(dr), abs(dc)) <= WINDOW_RADIUS:
+            distance = max(abs(dr), abs(dc))
+            if distance == 0 or (not outage and distance <= WINDOW_RADIUS):
                 continue
             cell = (robot[0] + dr, robot[1] + dc)
             if grid.is_free(cell):
