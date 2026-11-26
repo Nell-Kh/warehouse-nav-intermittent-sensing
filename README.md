@@ -10,7 +10,7 @@ Full design: [docs/SPEC.md](docs/SPEC.md) · Progress: [docs/PLAN.md](docs/PLAN.
 
 ## Status
 
-Environment core done (grid, workers, collisions, rewards, outages, observations; 200 tests). Next: the Gymnasium environment, layouts and scenarios. Timeline: [SPEC §8](docs/SPEC.md#8-timeline).
+The Gymnasium environment runs full episodes (`whnav.env.warehouse_env.WarehouseEnv`, 242 tests). Next: layouts, scenario generator and splits. Timeline: [SPEC §8](docs/SPEC.md#8-timeline).
 
 ## Setup
 
