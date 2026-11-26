@@ -43,8 +43,9 @@ docs/         spec and plan
 
 ## Team
 
-| Name | GitHub |
-|---|---|
-| Nell Khoury | [@Nell-Kh](https://github.com/Nell-Kh) |
+| Name | GitHub | Role |
+|---|---|---|
+| Nell Khoury | [@Nell-Kh](https://github.com/Nell-Kh) | Simulator and references |
+| Zahi Haddad | [@zahi-haddad](https://github.com/zahi-haddad) | Learned methods |
 
 Teammates add their own row in their first pull request.
