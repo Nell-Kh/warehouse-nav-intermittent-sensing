@@ -46,5 +46,6 @@ docs/         spec and plan
 | Name | GitHub |
 |---|---|
 | Nell Khoury | [@Nell-Kh](https://github.com/Nell-Kh) |
+| Mohammed Badran | [@mwbadran](https://github.com/mwbadran) |
 
 Teammates add their own row in their first pull request.
